@@ -1,0 +1,86 @@
+// Schema do banco — leads, mensagens de conversa e campanhas de marketing.
+// Rode `npm run db:migrate:dev` localmente ou `npm run db:migrate` em produção
+// (o comando de produção já está plugado no railway.json).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Estagio {
+  novo
+  qualificando
+  qualificado
+  negociacao
+  vendido
+  perdido
+}
+
+enum Temperatura {
+  frio
+  morno
+  quente
+}
+
+enum RemetenteMensagem {
+  lead
+  ia
+  humano
+}
+
+model Lead {
+  id          String      @id @default(cuid())
+  nome        String
+  empresa     String?
+  telefone    String      @unique
+  fonte       String      @default("Site")
+  estagio     Estagio     @default(novo)
+  valor       Int         @default(0)
+
+  // sinais usados no scoring (ver src/services/scoring.js)
+  orcamento   String?     // alto | medio | baixo
+  urgencia    String?     // imediata | 30dias | sem_previsao
+  interesse   Int?        // 0-10, inferido pela IA a partir da conversa
+
+  score       Int?
+  temperatura Temperatura?
+
+  // trava simples para não iniciar duas qualificações em paralelo pro mesmo lead
+  qualificando Boolean    @default(false)
+
+  criadoEm    DateTime    @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  mensagens   Mensagem[]
+
+  @@index([estagio])
+  @@index([temperatura])
+}
+
+model Mensagem {
+  id         String            @id @default(cuid())
+  leadId     String
+  lead       Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  de         RemetenteMensagem
+  texto      String
+  provedorIA String?           // "claude" | "gemini" | null (mensagem humana/lead)
+  criadoEm   DateTime          @default(now())
+
+  @@index([leadId])
+}
+
+model Campanha {
+  id          String   @id @default(cuid())
+  nome        String
+  template    String
+  mensagem    String
+  enviados    Int      @default(0)
+  respostas   Int      @default(0)
+  conversoes  Int      @default(0)
+  status      String   @default("Ativa") // Ativa | Pausada
+  criadoEm    DateTime @default(now())
+}
